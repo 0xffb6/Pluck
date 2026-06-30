@@ -1,0 +1,16 @@
+{
+  "name": "caido-pluck",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "caido-dev build",
+    "watch": "caido-dev watch"
+  },
+  "devDependencies": {
+    "@caido-community/dev": "^0.1.7",
+    "@caido/sdk-frontend": "^0.55.3",
+    "typescript": "^5.9.3"
+  }
+}
