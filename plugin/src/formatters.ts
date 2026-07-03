@@ -1,6 +1,6 @@
 import type { Format, Header, Pair } from "./pair";
 
-const PLUCK_VERSION = "1.0.0";
+const PLUCK_VERSION = "1.1.0";
 
 /** Enriched metadata header, what the native export and the original plugin lack. */
 function meta(p: Pair): string[] {
