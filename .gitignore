@@ -6,7 +6,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Local working notes — not part of the plugin, do not publish
+# Local working notes, not part of the plugin, do not publish
 upstream/
 
 # Logs

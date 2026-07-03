@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "caido-dev build",
+    "build": "caido-dev build && node -e \"require('fs').rmSync('dist/caido_pluck.zip',{force:true});require('fs').renameSync('dist/plugin_package.zip','dist/caido_pluck.zip')\"",
     "watch": "caido-dev watch"
   },
   "devDependencies": {

@@ -4,7 +4,7 @@ export default defineConfig({
   id: "pluck",
   name: "Pluck",
   description:
-    "Pluck the request/response pairs you select out of Caido's HTTP history and copy or save them as raw, markdown, cURL, or JSON.",
+    "Pluck the request/response pairs you select out of Caido's HTTP history and copy or save them as raw, markdown, cURL, JSON, or HAR.",
   version: "1.0.0",
   author: {
     name: "iυoni",

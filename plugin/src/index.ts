@@ -52,7 +52,7 @@ async function collectPairs(sdk: FrontendSDK, ids: string[]): Promise<Pair[]> {
   for (const id of ids) {
     try {
       let p = await buildPair(sdk, id);
-      if (!p.reqRaw) continue; // graphql returned nothing usable — skip
+      if (!p.reqRaw) continue; // graphql returned nothing usable, skip
       if (settings.redact) p = redactPair(p);
       out.push(p);
     } catch {
@@ -197,7 +197,7 @@ export const init = (sdk: FrontendSDK): void => {
     }
   })();
 
-  const formats: Format[] = ["raw", "markdown", "curl", "json"];
+  const formats: Format[] = ["raw", "markdown", "curl", "json", "har"];
   for (const fmt of formats) {
     for (const action of ["copy", "save"] as const) {
       const id = `${PLUGIN}.${action}-${fmt}`;

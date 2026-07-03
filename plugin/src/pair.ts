@@ -21,11 +21,11 @@ export interface Pair {
   size: number; // response body size in bytes
   timing: number | null; // roundtrip ms, when Caido exposes it
   createdAt: string;
-  reqRaw: string; // verbatim — source of truth in repro mode
+  reqRaw: string; // verbatim, source of truth in repro mode
   respRaw: string;
 }
 
-export type Format = "raw" | "markdown" | "curl" | "json";
+export type Format = "raw" | "markdown" | "curl" | "json" | "har";
 
 /** Split a raw HTTP message into start line, headers, and body. */
 function parseHttp(raw: string): { startLine: string; headers: Header[]; body: string } {

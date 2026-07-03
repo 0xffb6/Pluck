@@ -24,7 +24,7 @@ async function getDefaultDir(_sdk: SDK): Promise<string> {
 /**
  * Write each file into `dir` (created if missing). The frontend already builds
  * safe names, but we re-validate here as defense in depth: a name must be a
- * plain filename — no path separators, no `..` traversal.
+ * plain filename, no path separators, no `..` traversal.
  */
 async function saveFiles(
   _sdk: SDK,

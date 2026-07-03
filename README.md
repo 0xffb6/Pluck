@@ -1,18 +1,19 @@
 # Pluck
 
 A small Caido plugin that exports the request/response pairs **you select** in the
-HTTP history — cherry-pick N rows, export each one in full. This is the
+HTTP history, cherry-pick N rows, export each one in full. This is the
 differentiator vs. Caido's native export (which does "all" or "current rows").
 
 Built and tested against the `@caido-community/dev` toolchain, targeting Caido 0.57.
 
 ## Features
 
-- **Copy as / Save as** in the row context menu, in four formats sharing one `Pair` shape:
-  - **Raw** — request/response verbatim with readable separators
-  - **Markdown** — ` ```http ` blocks, ready to paste into a report
-  - **cURL** — reproducible command (method, full URL with http/https inferred from TLS, headers, `--data-raw` body)
-  - **JSON** — `{ method, url, host, path, query, reqHeaders, reqBody, status, respHeaders, respBody, timing }`
+- **Copy as / Save as** in the row context menu, in five formats sharing one `Pair` shape:
+  - **Raw**, request/response verbatim with readable separators
+  - **Markdown**, ` ```http ` blocks, ready to paste into a report
+  - **cURL**, reproducible command (method, full URL with http/https inferred from TLS, headers, `--data-raw` body)
+  - **JSON**, `{ method, url, host, path, query, reqHeaders, reqBody, status, respHeaders, respBody, timing }`
+  - **HAR**, a valid HTTP Archive 1.2 `.har` document (parsed query string, request/response cookies, `postData`, `content`, `timings`), replayable in browser devtools, Burp, or any HAR-aware tool. In bundle mode every selected pair becomes one `entries[]` item in a single log; per-request mode writes one self-contained HAR each.
 - **Enriched metadata header** on every export: method, status, content-type, size, timing, date.
 - **Bundle toggle**: one combined file, or one file per request (bulk).
 - **AI-safe mode (opt-in, never default)**: strips `Authorization`, `Cookie`,
@@ -57,8 +58,8 @@ This produces `dist/plugin_package.zip`.
 
 ## Acknowledgements
 
-The concept — copy/save request/response pairs from Caido for reports and
-triage — is inspired by
+The concept, copy/save request/response pairs from Caido for reports and
+triage, is inspired by
 [v0xyc0n/caido-reqres-exporter](https://github.com/v0xyc0n/caido-reqres-exporter)
 by Jakob Pachmann (MIT). Pluck is an independent, from-scratch rewrite with a
 different scope: four formatters over a shared `Pair` shape, an enriched metadata
