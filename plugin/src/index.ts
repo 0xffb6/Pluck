@@ -8,14 +8,17 @@ type FrontendSDK = Caido<API>;
 
 const PLUGIN = "pluck";
 
+const ALL_FORMATS: Format[] = ["raw", "markdown", "curl", "json", "har"];
+
 interface Settings {
   dir: string;
   bundle: boolean;
   redact: boolean;
+  shortcutFormat: Format; // format used by the "Save ALL visible" keyboard shortcut
 }
 
 // Single source of truth, kept in sync with sdk.storage.
-let settings: Settings = { dir: "", bundle: false, redact: false };
+let settings: Settings = { dir: "", bundle: false, redact: false, shortcutFormat: "har" };
 
 function applyStored(value: unknown): void {
   if (value && typeof value === "object") {
@@ -24,6 +27,9 @@ function applyStored(value: unknown): void {
       dir: typeof o.dir === "string" ? o.dir : settings.dir,
       bundle: Boolean(o.bundle),
       redact: Boolean(o.redact),
+      shortcutFormat: ALL_FORMATS.includes(o.shortcutFormat as Format)
+        ? (o.shortcutFormat as Format)
+        : settings.shortcutFormat,
     };
   }
 }
@@ -63,15 +69,18 @@ async function collectPairs(sdk: FrontendSDK, ids: string[]): Promise<Pair[]> {
 }
 
 /**
- * Every request id matching the scope currently active in HTTP History,
- * paginated through `sdk.graphql.requests`. The HTTPQL search bar is
- * deliberately NOT applied: this is "everything in scope", nothing else.
+ * Every request id matching a scope and/or an HTTPQL filter, paginated through
+ * `sdk.graphql.requests`. Either may be omitted.
  */
-async function idsInScope(sdk: FrontendSDK, scopeId: string): Promise<string[]> {
+async function idsMatching(
+  sdk: FrontendSDK,
+  scopeId: string | undefined,
+  filter: string | undefined,
+): Promise<string[]> {
   const ids: string[] = [];
   let after: string | undefined;
   for (;;) {
-    const res: any = await sdk.graphql.requests({ first: 500, after, scopeId });
+    const res: any = await sdk.graphql.requests({ first: 500, after, scopeId, filter });
     const conn = res?.requests;
     for (const e of conn?.edges ?? []) if (e?.node?.id) ids.push(e.node.id);
     const info = conn?.pageInfo;
@@ -81,7 +90,13 @@ async function idsInScope(sdk: FrontendSDK, scopeId: string): Promise<string[]> 
   return ids;
 }
 
-type Source = "selection" | "scope";
+/**
+ * selection: the highlighted rows.
+ * scope:     every request of the active scope (search filter ignored).
+ * visible:   everything HTTP History currently shows (active scope + search filter),
+ *            i.e. the equivalent of "select all rows, then export".
+ */
+type Source = "selection" | "scope" | "visible";
 type Action = "copy" | "save";
 
 async function run(
@@ -112,7 +127,7 @@ async function run(
     const scopeName = sdk.scopes.getScopes().find((s) => s.id === scopeId)?.name ?? "current scope";
     what = `in-scope request(s) from "${scopeName}"`;
     try {
-      ids = await idsInScope(sdk, scopeId);
+      ids = await idsMatching(sdk, scopeId, undefined);
     } catch (e) {
       sdk.window.showToast(`Could not list in-scope requests: ${String((e as Error)?.message ?? e)}`, {
         variant: "error",
@@ -121,6 +136,29 @@ async function run(
     }
     if (ids.length === 0) {
       sdk.window.showToast(`No requests match scope "${scopeName}"`, { variant: "warning" });
+      return;
+    }
+    sdk.window.showToast(`Exporting ${ids.length} ${what}…`, { variant: "info" });
+  } else if (source === "visible") {
+    const scopeId = sdk.httpHistory.getScopeId();
+    const filter = sdk.httpHistory.getQuery()?.trim() || undefined;
+    const scopeName = scopeId
+      ? (sdk.scopes.getScopes().find((s) => s.id === scopeId)?.name ?? "current scope")
+      : undefined;
+    const parts = [scopeName ? `scope "${scopeName}"` : "no scope", filter ? `filter "${filter}"` : "no filter"];
+    what = `visible request(s) (${parts.join(", ")})`;
+    try {
+      ids = await idsMatching(sdk, scopeId, filter);
+    } catch (e) {
+      sdk.window.showToast(`Could not list visible requests: ${String((e as Error)?.message ?? e)}`, {
+        variant: "error",
+      });
+      return;
+    }
+    if (ids.length === 0) {
+      sdk.window.showToast(`No requests visible in HTTP History (${parts.join(", ")})`, {
+        variant: "warning",
+      });
       return;
     }
     sdk.window.showToast(`Exporting ${ids.length} ${what}…`, { variant: "info" });
@@ -176,6 +214,12 @@ async function run(
   );
 }
 
+const IS_MAC = /mac|iphone|ipad/i.test(
+  (navigator as any).userAgentData?.platform ?? navigator.platform ?? "",
+);
+const SHORTCUT_KEYS = [IS_MAC ? "Meta" : "Control", "Shift", "E"];
+const shortcutLabel = () => (IS_MAC ? "Cmd+Shift+E" : "Ctrl+Shift+E");
+
 function buildSettingsPage(sdk: FrontendSDK): HTMLElement {
   const root = document.createElement("div");
   root.style.cssText = "padding:1.5rem;max-width:680px;display:flex;flex-direction:column;gap:1rem";
@@ -185,7 +229,7 @@ function buildSettingsPage(sdk: FrontendSDK): HTMLElement {
   const hint = document.createElement("p");
   hint.style.opacity = "0.7";
   hint.textContent =
-    "In HTTP History, right-click a row: \"Copy selected\" / \"Save selected\" export only the highlighted row(s); \"Save ALL in-scope\" exports every request of the scope active in HTTP History (search filter ignored, selection ignored). Each pair is exported in full.";
+    "In HTTP History, right-click a row: \"Copy selected\" / \"Save selected\" export only the highlighted row(s); \"Save ALL in-scope\" exports every request of the scope active in HTTP History (search filter ignored); \"Save ALL visible\" exports everything HTTP History currently shows (scope + search filter), like select-all then export. Each pair is exported in full.";
   root.append(title, hint);
 
   const dirLabel = document.createElement("label");
@@ -230,12 +274,29 @@ function buildSettingsPage(sdk: FrontendSDK): HTMLElement {
   );
   root.append(redactRow);
 
+  const fmtLabel = document.createElement("label");
+  fmtLabel.textContent = `Format for the "Save ALL visible" shortcut (${shortcutLabel()})`;
+  const fmtSelect = document.createElement("select");
+  fmtSelect.style.cssText = "padding:0.4rem;max-width:240px";
+  for (const f of ALL_FORMATS) {
+    const opt = document.createElement("option");
+    opt.value = f;
+    opt.textContent = FORMATS[f].label;
+    fmtSelect.append(opt);
+  }
+  fmtSelect.value = settings.shortcutFormat;
+  fmtSelect.addEventListener("change", () => {
+    void sdk.storage.set({ ...settings, shortcutFormat: fmtSelect.value as Format });
+  });
+  root.append(fmtLabel, fmtSelect);
+
   // Reflect external storage changes back into the controls.
   sdk.storage.onChange((value) => {
     applyStored(value);
     dirInput.value = settings.dir;
     bundleBox.checked = settings.bundle;
     redactBox.checked = settings.redact;
+    fmtSelect.value = settings.shortcutFormat;
   });
 
   return root;
@@ -260,11 +321,12 @@ export const init = (sdk: FrontendSDK): void => {
   // Context-menu entries, registered grouped by what they act on so the menu
   // reads top to bottom: copy selection, save selection, save whole scope.
   // The menu API has no submenus, so each label spells out its source.
-  const formats: Format[] = ["raw", "markdown", "curl", "json", "har"];
+  const formats = ALL_FORMATS;
   const entries: { action: Action; source: Source; label: string; icon: string }[] = [
     { action: "copy", source: "selection", label: "Copy selected", icon: "fas fa-copy" },
     { action: "save", source: "selection", label: "Save selected", icon: "fas fa-floppy-disk" },
     { action: "save", source: "scope", label: "Save ALL in-scope", icon: "fas fa-layer-group" },
+    { action: "save", source: "visible", label: "Save ALL visible", icon: "fas fa-list-check" },
   ];
   for (const e of entries) {
     for (const fmt of formats) {
@@ -277,6 +339,17 @@ export const init = (sdk: FrontendSDK): void => {
       sdk.menu.registerItem({ type: "RequestRow", commandId: id, leadingIcon: e.icon });
     }
   }
+
+  // Keyboard shortcut: "select all + export" without touching the table
+  // (the SDK can read the row selection but not set it). Deliberately not
+  // Ctrl/Cmd+A, which the request/response editors need for text selection.
+  const shortcutId = `${PLUGIN}.save-visible-shortcut`;
+  sdk.commands.register(shortcutId, {
+    name: `Pluck: Save ALL visible (format from Pluck settings)`,
+    group: "Pluck: Save ALL visible",
+    run: () => run(sdk, "save", settings.shortcutFormat, "visible", null),
+  });
+  sdk.shortcuts.register(shortcutId, SHORTCUT_KEYS);
 
   sdk.navigation.addPage(`/${PLUGIN}`, { body: buildSettingsPage(sdk) });
   sdk.sidebar.registerItem("Pluck", `/${PLUGIN}`, { icon: "fas fa-file-export" });

@@ -13,6 +13,13 @@ Built and tested against the `@caido-community/dev` toolchain, targeting Caido 0
   - **Pluck: Save selected as …**, the highlighted row(s) to the export folder
   - **Pluck: Save ALL in-scope as …**, every request of the scope active in HTTP
     History (selection and search filter ignored), to the export folder
+  - **Pluck: Save ALL visible as …**, everything HTTP History currently shows
+    (active scope **and** search filter), i.e. "select all, then export"
+- **Keyboard shortcut** `Ctrl+Shift+E` (Windows/Linux) / `Cmd+Shift+E` (macOS):
+  runs *Save ALL visible* in the format chosen in Pluck settings (HAR by default).
+  The Caido SDK can read the row selection but not set it, so a real
+  `Ctrl/Cmd+A` "select all rows" is not possible from a plugin; this shortcut
+  gives the same result without clobbering text selection in the editors.
 - Five formats sharing one `Pair` shape:
   - **Raw**, request/response verbatim with readable separators
   - **Markdown**, ` ```http ` blocks, ready to paste into a report
