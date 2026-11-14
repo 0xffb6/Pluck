@@ -49,6 +49,14 @@ pnpm build
 
 This produces `dist/plugin_package.zip`.
 
+## Release
+
+Tagging a version (`v` + the version in `caido.config.ts`, e.g. `v1.2.0`) runs
+`.github/workflows/release.yml`, which builds, signs `plugin_package.zip` with
+the `PRIVATE_KEY` repository secret (ed25519 PEM) and publishes a GitHub release
+containing `plugin_package.zip` and `plugin_package.zip.sig`, as the Caido store
+requires.
+
 ## Install in Caido
 
 1. Open Caido → **Plugins** → **Install Package**.
