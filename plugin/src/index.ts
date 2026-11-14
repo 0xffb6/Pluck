@@ -62,20 +62,80 @@ async function collectPairs(sdk: FrontendSDK, ids: string[]): Promise<Pair[]> {
   return out;
 }
 
+/**
+ * Every request id matching the scope currently active in HTTP History,
+ * paginated through `sdk.graphql.requests`. The HTTPQL search bar is
+ * deliberately NOT applied: this is "everything in scope", nothing else.
+ */
+async function idsInScope(sdk: FrontendSDK, scopeId: string): Promise<string[]> {
+  const ids: string[] = [];
+  let after: string | undefined;
+  for (;;) {
+    const res: any = await sdk.graphql.requests({ first: 500, after, scopeId });
+    const conn = res?.requests;
+    for (const e of conn?.edges ?? []) if (e?.node?.id) ids.push(e.node.id);
+    const info = conn?.pageInfo;
+    if (!info?.hasNextPage || !info.endCursor) break;
+    after = info.endCursor;
+  }
+  return ids;
+}
+
+type Source = "selection" | "scope";
+type Action = "copy" | "save";
+
 async function run(
   sdk: FrontendSDK,
-  action: "copy" | "save",
+  action: Action,
   fmt: Format,
+  source: Source,
   ctx: any,
 ): Promise<void> {
-  const ids = idsFromContext(ctx);
-  if (ids.length === 0) {
-    sdk.window.showToast("No requests selected", { variant: "warning" });
+  if (action === "save" && !settings.dir) {
+    sdk.window.showToast("Set an export folder in Pluck settings first", {
+      variant: "warning",
+    });
     return;
   }
+
+  let ids: string[];
+  let what: string;
+  if (source === "scope") {
+    const scopeId = sdk.httpHistory.getScopeId();
+    if (!scopeId) {
+      sdk.window.showToast(
+        "No scope active in HTTP History: pick a scope in the scope selector first",
+        { variant: "warning" },
+      );
+      return;
+    }
+    const scopeName = sdk.scopes.getScopes().find((s) => s.id === scopeId)?.name ?? "current scope";
+    what = `in-scope request(s) from "${scopeName}"`;
+    try {
+      ids = await idsInScope(sdk, scopeId);
+    } catch (e) {
+      sdk.window.showToast(`Could not list in-scope requests: ${String((e as Error)?.message ?? e)}`, {
+        variant: "error",
+      });
+      return;
+    }
+    if (ids.length === 0) {
+      sdk.window.showToast(`No requests match scope "${scopeName}"`, { variant: "warning" });
+      return;
+    }
+    sdk.window.showToast(`Exporting ${ids.length} ${what}…`, { variant: "info" });
+  } else {
+    ids = idsFromContext(ctx);
+    what = "selected request(s)";
+    if (ids.length === 0) {
+      sdk.window.showToast("No requests selected", { variant: "warning" });
+      return;
+    }
+  }
+
   const pairs = await collectPairs(sdk, ids);
   if (pairs.length === 0) {
-    sdk.window.showToast("Could not load the selected requests", { variant: "error" });
+    sdk.window.showToast(`Could not load the ${what}`, { variant: "error" });
     return;
   }
   const tag = settings.redact ? " (redacted)" : "";
@@ -83,7 +143,7 @@ async function run(
   if (action === "copy") {
     try {
       await navigator.clipboard.writeText(bundle(fmt, pairs));
-      sdk.window.showToast(`Copied ${pairs.length} pair(s) as ${FORMATS[fmt].label}${tag}`, {
+      sdk.window.showToast(`Copied ${pairs.length} ${what} as ${FORMATS[fmt].label}${tag}`, {
         variant: "success",
       });
     } catch (e) {
@@ -95,25 +155,25 @@ async function run(
   }
 
   // save
-  if (!settings.dir) {
-    sdk.window.showToast("Set an export folder in Pluck settings first", {
-      variant: "warning",
-    });
-    return;
-  }
   const ext = FORMATS[fmt].ext;
   const files = settings.bundle
     ? [{ name: `pluck_${stamp()}.${ext}`, content: bundle(fmt, pairs) }]
     : pairs.map((p, i) => ({ name: safeFilename(p, ext, i + 1), content: FORMATS[fmt].render(p) }));
 
-  const res = await sdk.backend.saveFiles(settings.dir, files);
-  if (res.ok) {
-    sdk.window.showToast(`Saved ${res.written} file(s) to ${settings.dir}${tag}`, {
-      variant: "success",
-    });
-  } else {
-    sdk.window.showToast(`Save failed: ${res.error}`, { variant: "error" });
+  // Chunk the backend calls so a large in-scope export never ships one giant payload.
+  let written = 0;
+  for (let i = 0; i < files.length; i += 100) {
+    const res = await sdk.backend.saveFiles(settings.dir, files.slice(i, i + 100));
+    written += res.written;
+    if (!res.ok) {
+      sdk.window.showToast(`Save failed after ${written} file(s): ${res.error}`, { variant: "error" });
+      return;
+    }
   }
+  sdk.window.showToast(
+    `Saved ${pairs.length} ${what} as ${FORMATS[fmt].label} (${written} file(s)) to ${settings.dir}${tag}`,
+    { variant: "success" },
+  );
 }
 
 function buildSettingsPage(sdk: FrontendSDK): HTMLElement {
@@ -125,7 +185,7 @@ function buildSettingsPage(sdk: FrontendSDK): HTMLElement {
   const hint = document.createElement("p");
   hint.style.opacity = "0.7";
   hint.textContent =
-    "Select rows in the HTTP history, then right-click → Copy as / Save as. Each selected pair is exported in full.";
+    "In HTTP History, right-click a row: \"Copy selected\" / \"Save selected\" export only the highlighted row(s); \"Save ALL in-scope\" exports every request of the scope active in HTTP History (search filter ignored, selection ignored). Each pair is exported in full.";
   root.append(title, hint);
 
   const dirLabel = document.createElement("label");
@@ -197,20 +257,24 @@ export const init = (sdk: FrontendSDK): void => {
     }
   })();
 
+  // Context-menu entries, registered grouped by what they act on so the menu
+  // reads top to bottom: copy selection, save selection, save whole scope.
+  // The menu API has no submenus, so each label spells out its source.
   const formats: Format[] = ["raw", "markdown", "curl", "json", "har"];
-  for (const fmt of formats) {
-    for (const action of ["copy", "save"] as const) {
-      const id = `${PLUGIN}.${action}-${fmt}`;
+  const entries: { action: Action; source: Source; label: string; icon: string }[] = [
+    { action: "copy", source: "selection", label: "Copy selected", icon: "fas fa-copy" },
+    { action: "save", source: "selection", label: "Save selected", icon: "fas fa-floppy-disk" },
+    { action: "save", source: "scope", label: "Save ALL in-scope", icon: "fas fa-layer-group" },
+  ];
+  for (const e of entries) {
+    for (const fmt of formats) {
+      const id = `${PLUGIN}.${e.action}-${e.source}-${fmt}`;
       sdk.commands.register(id, {
-        name: `${action === "copy" ? "Copy" : "Save"} as ${FORMATS[fmt].label}`,
-        group: action === "copy" ? "Copy as" : "Save as",
-        run: (ctx: any) => run(sdk, action, fmt, ctx),
+        name: `Pluck: ${e.label} as ${FORMATS[fmt].label}`,
+        group: `Pluck: ${e.label}`,
+        run: (ctx: any) => run(sdk, e.action, fmt, e.source, ctx),
       });
-      sdk.menu.registerItem({
-        type: "RequestRow",
-        commandId: id,
-        leadingIcon: action === "copy" ? "fas fa-copy" : "fas fa-floppy-disk",
-      });
+      sdk.menu.registerItem({ type: "RequestRow", commandId: id, leadingIcon: e.icon });
     }
   }
 

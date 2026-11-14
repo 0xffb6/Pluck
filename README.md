@@ -8,7 +8,12 @@ Built and tested against the `@caido-community/dev` toolchain, targeting Caido 0
 
 ## Features
 
-- **Copy as / Save as** in the row context menu, in five formats sharing one `Pair` shape:
+- **Three clearly-labelled actions** in the row context menu, each in five formats:
+  - **Pluck: Copy selected as …**, the highlighted row(s) to the clipboard
+  - **Pluck: Save selected as …**, the highlighted row(s) to the export folder
+  - **Pluck: Save ALL in-scope as …**, every request of the scope active in HTTP
+    History (selection and search filter ignored), to the export folder
+- Five formats sharing one `Pair` shape:
   - **Raw**, request/response verbatim with readable separators
   - **Markdown**, ` ```http ` blocks, ready to paste into a report
   - **cURL**, reproducible command (method, full URL with http/https inferred from TLS, headers, `--data-raw` body)
@@ -44,12 +49,14 @@ This produces `dist/plugin_package.zip`.
 3. Open the **Pluck** entry in the left sidebar and set your **Export folder**
    (and the Bundle / AI-safe toggles if you want them).
 4. In **HTTP History**, select one or more rows, right-click, and pick
-   **Copy as …** or **Save as …**.
+   **Pluck: Copy selected as …** or **Pluck: Save selected as …**.
+   To export the whole scope, pick a scope in HTTP History's scope selector,
+   right-click any row and pick **Pluck: Save ALL in-scope as …**.
 
 ## Notes on the Caido 0.57 SDK
 
 - The plugin menu API has **no nested submenus**, so the four formats are registered
-  as flat items grouped under "Copy as" / "Save as".
+  as flat items whose labels spell out what they act on (selected vs. all in-scope).
 - Request/response bytes are read via `sdk.graphql.request({id})` /
   `sdk.graphql.response({id})`; everything else (method, headers, body, status) is
   parsed from the raw bytes, so the plugin doesn't depend on optional GraphQL fields.
