@@ -1,0 +1,61 @@
+# Build, sign and publish a Caido store release when a version tag is pushed.
+#
+# One-time setup: add the ed25519 private key (PEM, generated with
+#   openssl genpkey -algorithm ed25519 -out private_key.pem)
+# as the repository secret PRIVATE_KEY (Settings → Secrets and variables → Actions).
+#
+# Release: bump the version in caido.config.ts, merge, then push a tag that
+# matches it, e.g. `git tag v1.2.0 && git push origin v1.2.0`.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Check tag matches caido.config.ts version
+        run: |
+          version=$(grep -oP 'version:\s*"\K[^"]+' caido.config.ts | head -1)
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match caido.config.ts version $version"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Sign plugin_package.zip
+        env:
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+        run: |
+          if [ -z "$PRIVATE_KEY" ]; then
+            echo "::error::Repository secret PRIVATE_KEY is not set"
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/private_key.pem"
+          openssl pkeyutl -sign -inkey "$RUNNER_TEMP/private_key.pem" -rawin \
+            -in dist/plugin_package.zip -out dist/plugin_package.zip.sig
+          rm -f "$RUNNER_TEMP/private_key.pem"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/plugin_package.zip dist/plugin_package.zip.sig \
+            --title "Pluck ${GITHUB_REF_NAME#v}" --generate-notes

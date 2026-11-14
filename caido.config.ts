@@ -4,12 +4,12 @@ export default defineConfig({
   id: "pluck",
   name: "Pluck",
   description:
-    "Pluck the request/response pairs you select out of Caido's HTTP history and copy or save them as raw, markdown, cURL, JSON, or HAR.",
-  version: "1.1.0",
+    "Copy or save the HTTP history requests you select, a whole scope, or everything visible, as raw, Markdown, cURL, JSON or HAR.",
+  version: "1.2.0",
   author: {
-    name: "iυoni",
-    email: "8407711+w3spi5@users.noreply.github.com",
-    url: "https://github.com/w3spi5",
+    name: "kiyomasanaki",
+    email: "8407711+kiyomasanaki@users.noreply.github.com",
+    url: "https://github.com/kiyomasanaki",
   },
   plugins: [
     {
